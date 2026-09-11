@@ -8,6 +8,7 @@ const emptyForm = {
   techStack: '', category: 'React.js',
   liveUrl: '', githubUrl: '',
   icon: '💻', color: '#0dcfcf',
+  thumbnail: '', // NEW: image URL shown on portfolio card + modal
   featured: true, order: 0,
 };
 
@@ -21,6 +22,7 @@ export default function Projects() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false); // NEW: tracks image upload in progress
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const fetchProjects = async () => {
@@ -48,10 +50,35 @@ export default function Projects() {
       techStack: p.techStack.join(', '), category: p.category,
       liveUrl: p.liveUrl || '', githubUrl: p.githubUrl || '',
       icon: p.icon || '💻', color: p.color || '#0dcfcf',
+      thumbnail: p.thumbnail || '', // NEW: load existing thumbnail when editing
       featured: p.featured, order: p.order || 0,
     });
     setEditingId(p._id);
     setShowModal(true);
+  };
+
+  // NEW: Uploads selected image file to backend, then stores returned path in form.thumbnail
+  const handleImageUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('image', file);
+
+    setUploading(true);
+    try {
+      const res = await API.post('/projects/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      if (res.data.success) {
+        setForm(prev => ({ ...prev, thumbnail: res.data.url }));
+        toast.success('Image uploaded!');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Image upload failed.');
+    } finally {
+      setUploading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -157,10 +184,18 @@ export default function Projects() {
                   onMouseEnter={e => e.currentTarget.style.background = 'rgba(13,207,207,0.03)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  {/* Title */}
+                  {/* Title — now shows thumbnail preview if available, else emoji icon */}
                   <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ fontSize: '1.2rem' }}>{p.icon}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {p.thumbnail ? (
+                        <img
+                          src={p.thumbnail}
+                          alt={p.title}
+                          style={{ width: '38px', height: '38px', borderRadius: '6px', objectFit: 'cover', flexShrink: 0 }}
+                        />
+                      ) : (
+                        <span style={{ fontSize: '1.2rem' }}>{p.icon}</span>
+                      )}
                       <div>
                         <div style={{ color: '#f0f4ff', fontWeight: 600, fontSize: '0.88rem' }}>{p.title}</div>
                         <div style={{ color: '#8892b0', fontSize: '0.75rem' }}>{p.subtitle}</div>
@@ -242,6 +277,29 @@ export default function Projects() {
                 </div>
               </div>
 
+              {/* NEW: Thumbnail Image — file upload instead of URL text field */}
+              <div>
+                <label style={labelStyle}>Thumbnail Image (website/software screenshot)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={uploading}
+                  style={{ ...inputStyle, padding: '8px', cursor: uploading ? 'not-allowed' : 'pointer' }}
+                />
+                {uploading && (
+                  <p style={{ color: '#8892b0', fontSize: '0.78rem', marginTop: '6px' }}>Uploading...</p>
+                )}
+                {form.thumbnail && !uploading && (
+                  <img
+                    src={form.thumbnail.startsWith('http') ? form.thumbnail : `${API.defaults.baseURL.replace('/api', '')}${form.thumbnail}`}
+                    alt="Preview"
+                    style={{ marginTop: '8px', width: '100%', maxHeight: '140px', objectFit: 'cover', borderRadius: '8px', border: '1px solid rgba(13,207,207,0.2)' }}
+                    onError={e => { e.target.style.display = 'none'; }}
+                  />
+                )}
+              </div>
+
               <div>
                 <label style={labelStyle}>Description *</label>
                 <textarea style={{ ...inputStyle, minHeight: '90px', resize: 'vertical' }} placeholder="Project description..." value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
@@ -260,7 +318,7 @@ export default function Projects() {
                   </select>
                 </div>
                 <div>
-                  <label style={labelStyle}>Icon</label>
+                  <label style={labelStyle}>Icon (fallback if no thumbnail)</label>
                   <select style={{ ...inputStyle, cursor: 'pointer' }} value={form.icon} onChange={e => setForm({ ...form, icon: e.target.value })}>
                     {icons.map(i => <option key={i} value={i}>{i} {i}</option>)}
                   </select>
@@ -291,12 +349,12 @@ export default function Projects() {
             </div>
 
             <div style={{ display: 'flex', gap: '1rem', marginTop: '1.5rem' }}>
-              <button onClick={handleSave} disabled={saving} style={{
+              <button onClick={handleSave} disabled={saving || uploading} style={{
                 flex: 1, background: '#0dcfcf', color: '#070d1f', border: 'none',
-                borderRadius: '8px', padding: '12px', cursor: saving ? 'not-allowed' : 'pointer',
-                fontWeight: 700, fontSize: '0.9rem', opacity: saving ? 0.7 : 1,
+                borderRadius: '8px', padding: '12px', cursor: (saving || uploading) ? 'not-allowed' : 'pointer',
+                fontWeight: 700, fontSize: '0.9rem', opacity: (saving || uploading) ? 0.7 : 1,
               }}>
-                {saving ? 'Saving...' : editingId ? 'Update Project' : 'Add Project'}
+                {saving ? 'Saving...' : uploading ? 'Uploading image...' : editingId ? 'Update Project' : 'Add Project'}
               </button>
               <button onClick={() => setShowModal(false)} style={{
                 background: 'transparent', color: '#8892b0', border: '1px solid rgba(136,146,176,0.2)',
